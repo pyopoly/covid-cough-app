@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet"
+      integrity="sha384-1BmE4kWBq78iYhFldvKuhfTAU6auU8tT94WrHftjDbrCEXSU1oBoqyl2QvZ6jIW3" crossorigin="anonymous">
+    <link href="css/mainPage.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+  </head>
+
+  <body>
+    <!-- Navbar Start -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+      <div class="container-fluid">
+        <a class="navbar-brand" href="index.html">Cough Application</a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
+          aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+          <!-- <ul class="navbar-nav">
+              <li class="nav-item">
+                <a class="nav-link" aria-current="page" href="quizlist.html">Quiz List</a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link" href="makequiz.html">Make A Quiz</a>
+              </li>
+            </ul> -->
+        </div>
+      </div>
+    </nav>
+    <!-- Navbar Start -->
+
+    <div class="px-4 my-5 text-center">
+      <h1 class="display-5 fw-bold">Cough App</h1>
+      <h1 class="display-5 fw-bold">COMP 4989 - Team 1</h1>
+      <div class="col-lg-6 mx-auto">
+        <p class="lead mb-4"> A Covid Cough Detection Application </p>
+        <!-- <br> -->
+        <p class="lead mb-4">Record you cough and wait</p>
+        <div class="d-grid gap-5 d-sm-flex justify-content-sm-center">
+          <button type="button" class="btn btn-outline-primary btn-lg px-4" id="start">Record</button>
+          <button type="button" class="btn btn-outline-danger btn-lg px-4" id="stop" disabled=true>Stop</button>
+        </div>
+        <p></p>
+        <div>
+          <audio id="player" controls></audio>
+          <!-- <a id="download">Download</a> -->
+          <!-- <button class="btn"><i class="fa fa-download"></i> Download</button> -->
+        </div>
+        <p></p>
+        <form enctype="multipart/form-data">
+          <input id="upload" type='file' accept="audio/webm" name="files[]" size=30>
+          <button id='submit' type='button' class="btn btn-outline-secondary btn-sm">Done</button>
+        </form>
+        <div id="segmented_recordings">
+
+        </div>
+      </div>
+    </div>
+    <script>
+      const xhttp = new XMLHttpRequest();
+      const submit = document.getElementById('submit');
+      const myFile = document.getElementById('myFile');
+      const upload = document.getElementById('upload');
+      const startButton = document.getElementById('start');
+      const downloadLink = document.getElementById('download');
+      const stopButton = document.getElementById('stop');
+      const player = document.getElementById('player');
+      const segmented = document.getElementById('segmented_recordings');
+      const loading = `<br><div class="spinner-border text-primary" role="status"><span class="sr-only"></span></div>`
+
+      let blob
+      const handleSuccess = function (stream) {
+        const options = {
+          mimeType: 'audio/webm'
+        };
+        const recordedChunks = [];
+        const mediaRecorder = new MediaRecorder(stream, options);
+
+        mediaRecorder.addEventListener('dataavailable', function (e) {
+          if (e.data.size > 0) recordedChunks.push(e.data);
+        });
+
+        mediaRecorder.addEventListener('stop', function () {
+          blob = new Blob(recordedChunks, {
+            type: 'audio/webm'
+          })
+          let audio = URL.createObjectURL(blob);
+          // downloadLink.href = audio
+          // downloadLink.download = 'cough_recording.webm';
+          player.src = audio
+          sendingRequest(blob)
+
+
+        });
+
+        stopButton.addEventListener('click', function () {
+          stopButton.disabled = true
+          mediaRecorder.stop();
+          segmented.innerHTML = loading
+        });
+
+        startButton.addEventListener('click', function () {
+          stopButton.disabled = false
+          startButton.disabled = true
+          recordedChunks.length = 0
+          mediaRecorder.start();
+        })
+        
+      upload.addEventListener('change', (uploaded) => {
+        files = uploaded.target.files;
+        let f = files[0];
+        let reader = new FileReader();
+        reader.onload = function (e) {
+          blob = new Blob([new Uint8Array(e.target.result)], {
+            type: 'audio/webm'
+          });
+          let audio = URL.createObjectURL(blob);
+          player.src = audio
+        };
+        reader.readAsArrayBuffer(f);
+      })
+
+        submit.addEventListener('click', () => {
+          segmented.innerHTML = loading
+          sendingRequest(blob)
+        })
+      };
+
+      function sendingRequest(blob) {
+        blob.arrayBuffer().then(buffer => {
+          xhttp.open("POST", "http://localhost:8080/cough/api", true);
+          // xhttp.open("POST", "https://jacknteg.com/cough/api", true);
+          xhttp.send(buffer);
+
+          xhttp.onreadystatechange = () => {
+            if (xhttp.readyState == 4) {
+              startButton.disabled = false
+              if (xhttp.status == 200) {
+                console.log(xhttp.responseText)
+                let result = JSON.parse(xhttp.responseText)
+                let folder = result.folder + '/segmented_coughs'
+                let coughs = result.names
+                let predicts = result.prediction
+                let avg = 1 - (predicts.reduce((a, b) => a + b) / predicts.length)
+                let hr = document.createElement("hr");
+                let br = document.createElement("br");
+                let result_msg = document.createElement("div");
+                let msg = document.createElement("p");
+                msg.className = "lead mb-4 fw-bold";
+
+                segmented.innerHTML = ""
+                segmented.appendChild(br)
+
+                msg.textContent = "Total Probability of Covid: " + (avg * 100).toFixed(2) + "%"
+                result_msg.appendChild(msg)
+                segmented.appendChild(result_msg)
+
+                segmented.appendChild(hr)
+                for (let i = 0; i < coughs.length; i++) {
+                  let container = document.createElement("div");
+                  let p = document.createElement("p");
+                  let pred = document.createElement("span");
+                  let aud = document.createElement("audio");
+                  p.style.marginRight = "15px;"
+                  pred.style.marginLeft = '15px'
+                  p.textContent = "" + coughs[i]
+                  pred.textContent = "Covid: " + ((1 - predicts[i]) * 100).toFixed(2) + "%"
+                  aud.controls = true
+                  aud.src = 'file/' + folder + '/' + coughs[i] + '.wav'
+                  container.appendChild(p)
+                  p.appendChild(aud)
+                  p.appendChild(pred)
+                  segmented.appendChild(container)
+                };
+              } else if (xhttp.readyState == 4 && xhttp.status != 200) {
+                console.log(`Something went wrong, status: ${xhttp.status}`);
+              }
+            }
+          }
+        })
+      }
+
+      navigator.mediaDevices.getUserMedia({
+          audio: true,
+          video: false
+        })
+        .then(handleSuccess);
+    </script>
+
+  </body>
+
+</html>
